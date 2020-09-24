@@ -31,6 +31,9 @@ index: cckiss/index.cpp.o glsl-index/vert.spv glsl-index/frag.spv
 bezier: cckiss/bezier.cpp.o glsl-index/vert.spv glsl-index/frag.spv
 	$(CXX) cckiss/bezier.cpp.o -o bezier $(LIBS)
 
+depth: cckiss/depth.cpp.o glsl-depth/vert.spv glsl-depth/frag.spv
+	$(CXX) cckiss/depth.cpp.o -o depth $(LIBS)
+
 glsl-pipeline/vert.spv: pipeline.vert
 	glslangValidator pipeline.vert -V -o glsl-pipeline/vert.spv
 
@@ -43,3 +46,8 @@ glsl-index/vert.spv: index.vert
 glsl-index/frag.spv: index.frag
 	glslangValidator index.frag -V -o glsl-index/frag.spv
 
+glsl-depth/vert.spv: depth.vert
+	glslangValidator depth.vert -V -o glsl-depth/vert.spv
+
+glsl-depth/frag.spv: depth.frag
+	glslangValidator depth.frag -V -o glsl-depth/frag.spv
