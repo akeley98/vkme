@@ -160,7 +160,6 @@ private:
         VkImageView view;
         VkFramebuffer framebuffer;
         VkBuffer uniformBuffer;
-        VkDeviceMemory uniformBufferMemory;
         VkCommandBuffer commandBuffer;
         VkDescriptorSet descriptorSet;
     };
@@ -191,6 +190,8 @@ private:
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
 
+    VkDeviceMemory uniformBufferMemory;
+    VkDeviceSize uniformBufferStride;
     VkDescriptorPool descriptorPool;
 
     struct PerFrame
@@ -267,8 +268,6 @@ private:
             vkFreeCommandBuffers(device, commandPool, 1, &pi.commandBuffer);
         }
 
-
-
         vkDestroyPipeline(device, graphicsPipeline, nullptr);
         vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
         vkDestroyRenderPass(device, renderPass, nullptr);
@@ -281,8 +280,8 @@ private:
 
         for (PerImage& pi : perImage) {
             vkDestroyBuffer(device, pi.uniformBuffer, nullptr);
-            vkFreeMemory(device, pi.uniformBufferMemory, nullptr);
         }
+        vkFreeMemory(device, uniformBufferMemory, nullptr);
 
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
     }
@@ -1054,9 +1053,12 @@ private:
 
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+        std::vector<VkBuffer> buffers = createBuffers(perImage.size(), bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory, &uniformBufferStride);
 
+        size_t i = 0;
         for (PerImage& pi : perImage) {
-            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, pi.uniformBuffer, pi.uniformBufferMemory);
+            pi.uniformBuffer = buffers.at(i);
+            ++i;
         }
     }
 
@@ -1146,6 +1148,45 @@ private:
         }
 
         vkBindBufferMemory(device, buffer, bufferMemory, 0);
+    }
+
+    // Return a vector of [count]-many buffers, all sharing one VkDeviceMemory (created and returned through the VkDeviceMemory reference parameter).
+    // Also gives the stride between consecutive buffers through *outStride, if that pointer is provided.
+    std::vector<VkBuffer> createBuffers(size_t count, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkDeviceMemory& bufferMemory, VkDeviceSize* outStride=nullptr) {
+        assert(count > 0);
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = size;
+        bufferInfo.usage = usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        std::vector<VkBuffer> buffers(count);
+        for (VkBuffer& buffer : buffers) {
+            if (vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+                throw std::runtime_error("failed to create buffer!");
+            }
+        }
+
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(device, buffers[0], &memRequirements);
+        if (outStride) *outStride = memRequirements.size;
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size * count;
+        assert(allocInfo.allocationSize / count == memRequirements.size);
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+        if (vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate buffer memory!");
+        }
+
+        VkDeviceSize offset = 0;
+        for (VkBuffer& buffer : buffers) {
+            vkBindBufferMemory(device, buffer, bufferMemory, offset);
+            offset += memRequirements.size;
+        }
+        return buffers;
     }
 
     VkCommandBuffer beginSingleTimeCommands() {
@@ -1311,8 +1352,8 @@ private:
         ubo.proj[1][1] *= -1;
 
         void* data;
-        auto& mem = perImage[currentImage].uniformBufferMemory;
-        vkMapMemory(device, mem, 0, sizeof(ubo), 0, &data);
+        auto& mem = uniformBufferMemory;
+        vkMapMemory(device, mem, currentImage * uniformBufferStride, sizeof(ubo), 0, &data);
             memcpy(data, &ubo, sizeof(ubo));
         vkUnmapMemory(device, mem);
     }
