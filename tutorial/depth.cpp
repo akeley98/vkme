@@ -791,6 +791,7 @@ private:
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
         if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create graphics command pool!");
@@ -1214,49 +1215,64 @@ private:
             if (vkAllocateCommandBuffers(device, &allocInfo, &pi.commandBuffer) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate command buffers!");
             }
-            VkCommandBufferBeginInfo beginInfo{};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        }
+    }
 
-            if (vkBeginCommandBuffer(pi.commandBuffer, &beginInfo) != VK_SUCCESS) {
-                throw std::runtime_error("failed to begin recording command buffer!");
-            }
+    void recordOneTimeCommandBuffer(PerImage& pi) {
+        static auto startTime = std::chrono::high_resolution_clock::now();
 
-            VkRenderPassBeginInfo renderPassInfo{};
-            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            renderPassInfo.renderPass = renderPass;
-            renderPassInfo.framebuffer = pi.framebuffer;
-            renderPassInfo.renderArea.offset = {0, 0};
-            renderPassInfo.renderArea.extent = swapChainExtent;
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        double time = std::chrono::duration<double, std::chrono::seconds::period>(currentTime - startTime).count();
+        const double period = 2.5;
+        double angle = fmod(time, period) * (6.283185307179586 / period);
+        glm::vec4 color;
+        color.x = 0.5 + 0.5 * sin(angle);
+        color.y = 0.5 + 0.5 * sin(angle + 2.0943951023931953);
+        color.z = 0.5 + 0.5 * sin(angle - 2.0943951023931953);
+        color.w = 1.0;
 
-            std::array<VkClearValue, 2> clearValues{};
-            clearValues[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
-            clearValues[1].depthStencil = {1.0f, 0};
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-            renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-            renderPassInfo.pClearValues = clearValues.data();
+        if (vkBeginCommandBuffer(pi.commandBuffer, &beginInfo) != VK_SUCCESS) {
+            throw std::runtime_error("failed to begin recording command buffer!");
+        }
 
-            vkCmdBeginRenderPass(pi.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+        VkRenderPassBeginInfo renderPassInfo{};
+        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassInfo.renderPass = renderPass;
+        renderPassInfo.framebuffer = pi.framebuffer;
+        renderPassInfo.renderArea.offset = {0, 0};
+        renderPassInfo.renderArea.extent = swapChainExtent;
 
-                vkCmdBindPipeline(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+        std::array<VkClearValue, 2> clearValues{};
+        clearValues[0].color = {0.1f, 0.1f, 0.1, 1.0f};
+        clearValues[1].depthStencil = {1.0f, 0};
 
-                VkBuffer vertexBuffers[] = {vertexBuffer};
-                VkDeviceSize offsets[] = {0};
-                vkCmdBindVertexBuffers(pi.commandBuffer, 0, 1, vertexBuffers, offsets);
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
 
-                vkCmdBindIndexBuffer(pi.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdBeginRenderPass(pi.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-                vkCmdBindDescriptorSets(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &pi.descriptorSet, 0, nullptr);
+            vkCmdBindPipeline(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-                PushConstant pushConstant { glm::vec4(0, 1, 0, 1) };
-                vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
+            VkBuffer vertexBuffers[] = {vertexBuffer};
+            VkDeviceSize offsets[] = {0};
+            vkCmdBindVertexBuffers(pi.commandBuffer, 0, 1, vertexBuffers, offsets);
 
-                vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+            vkCmdBindIndexBuffer(pi.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-            vkCmdEndRenderPass(pi.commandBuffer);
+            vkCmdBindDescriptorSets(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &pi.descriptorSet, 0, nullptr);
 
-            if (vkEndCommandBuffer(pi.commandBuffer) != VK_SUCCESS) {
-                throw std::runtime_error("failed to record command buffer!");
-            }
+            PushConstant pushConstant { color };
+            vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
+
+            vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+
+        vkCmdEndRenderPass(pi.commandBuffer);
+
+        if (vkEndCommandBuffer(pi.commandBuffer) != VK_SUCCESS) {
+            throw std::runtime_error("failed to record command buffer!");
         }
     }
 
@@ -1330,6 +1346,7 @@ private:
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
 
+        recordOneTimeCommandBuffer(perImage[imageIndex]);
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &perImage[imageIndex].commandBuffer;
 
