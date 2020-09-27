@@ -35,6 +35,9 @@ bezier: cckiss/bezier.cpp.o glsl-index/vert.spv glsl-index/frag.spv
 depth: cckiss/depth.cpp.o glsl-depth/vert.spv glsl-depth/frag.spv
 	$(CXX) cckiss/depth.cpp.o -o depth $(LIBS)
 
+spinny/spinny-bin: cckiss/spinny/window.cc.o cckiss/spinny/render.cc.o cckiss/spinny/main.cc.o glsl-depth/vert.spv glsl-depth/frag.spv
+	$(CXX) cckiss/spinny/window.cc.o cckiss/spinny/render.cc.o cckiss/spinny/main.cc.o -o spinny/spinny-bin $(LIBS)
+
 glsl-pipeline/vert.spv: pipeline.vert
 	glslangValidator pipeline.vert -V -o glsl-pipeline/vert.spv
 
