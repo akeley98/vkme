@@ -27,6 +27,7 @@
 #include <set>
 
 #include "camera.hh"
+#include "util.hh"
 #include "window.hh"
 
 const uint32_t WIDTH = 800;
@@ -596,8 +597,8 @@ class Renderer {
     }
 
     void createGraphicsPipeline() {
-        auto vertShaderCode = readFile("glsl-depth/vert.spv");
-        auto fragShaderCode = readFile("glsl-depth/frag.spv");
+        auto vertShaderCode = readFile(expand_filename("vert.spv"));
+        auto fragShaderCode = readFile(expand_filename("frag.spv"));
 
         VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
         VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -801,11 +802,12 @@ class Renderer {
 
     void createTextureImage() {
         int texWidth, texHeight, texChannels;
-        stbi_uc* pixels = stbi_load("texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+        std::string filename = expand_filename("texture.jpg");
+        stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
         if (!pixels) {
-            throw std::runtime_error("failed to load texture image!");
+            throw std::runtime_error("failed to load texture image " + filename);
         }
 
         VkBuffer stagingBuffer;
@@ -1544,7 +1546,7 @@ class Renderer {
         std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
         if (!file.is_open()) {
-            throw std::runtime_error("failed to open file!");
+            throw std::runtime_error("failed to open file: " + filename);
         }
 
         size_t fileSize = (size_t) file.tellg();
