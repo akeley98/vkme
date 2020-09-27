@@ -2,13 +2,14 @@ default: all
 
 -include cckiss/Makefile
 
-CXXFLAGS=-O2 -Wall -std=c++17
+CPPFLAGS=-DGLFW_INCLUDE_VULKAN=1 -DGLM_FORCE_RADIANS=1 -DGLM_FORCE_DEPTH_ZERO_TO_ONE=1
+CXXFLAGS=-O2 -Wall -Wextra -std=c++17
 LIBS=-lvulkan -lglfw
 
 all: window validation image pipeline present recreate index bezier
 
-window: cckiss/00_base_code.cpp.o
-	$(CXX) cckiss/00_base_code.cpp.o -o window $(LIBS)
+testwindow: cckiss/window.cc.o cckiss/testwindow.cc.o
+	$(CXX) cckiss/window.cc.o cckiss/testwindow.cc.o -o testwindow $(LIBS)
 
 validation: cckiss/validation.cpp.o
 	$(CXX) cckiss/validation.cpp.o -o validation $(LIBS)

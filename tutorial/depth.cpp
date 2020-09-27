@@ -104,13 +104,8 @@ struct Vertex {
     }
 };
 
-struct UniformBufferObject {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
-};
-
 struct PushConstant {
+    glm::mat4 mvp;
     glm::vec4 color;
 };
 
@@ -159,7 +154,6 @@ private:
         VkImage image;
         VkImageView view;
         VkFramebuffer framebuffer;
-        VkBuffer uniformBuffer;
         VkCommandBuffer commandBuffer;
         VkDescriptorSet descriptorSet;
 
@@ -195,8 +189,6 @@ private:
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
 
-    VkDeviceMemory uniformBufferMemory;
-    VkDeviceSize uniformBufferStride;
     VkDescriptorPool descriptorPool;
 
     // Data that is duplicated per in-flight frame.
@@ -246,7 +238,6 @@ private:
         createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
-        createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
         createCommandBuffers();
@@ -281,11 +272,6 @@ private:
         }
 
         vkDestroySwapchainKHR(device, swapChain, nullptr);
-
-        for (PerImage& pi : perImage) {
-            vkDestroyBuffer(device, pi.uniformBuffer, nullptr);
-        }
-        vkFreeMemory(device, uniformBufferMemory, nullptr);
 
         vkDestroyDescriptorPool(device, descriptorPool, nullptr);
     }
@@ -347,7 +333,6 @@ private:
         createGraphicsPipeline();
         createDepthResources();
         createFramebuffers();
-        createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
         createCommandBuffers();
@@ -606,13 +591,6 @@ private:
     }
 
     void createDescriptorSetLayout() {
-        VkDescriptorSetLayoutBinding uboLayoutBinding{};
-        uboLayoutBinding.binding = 0;
-        uboLayoutBinding.descriptorCount = 1;
-        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboLayoutBinding.pImmutableSamplers = nullptr;
-        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
         VkDescriptorSetLayoutBinding samplerLayoutBinding{};
         samplerLayoutBinding.binding = 1;
         samplerLayoutBinding.descriptorCount = 1;
@@ -620,7 +598,7 @@ private:
         samplerLayoutBinding.pImmutableSamplers = nullptr;
         samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        std::array<VkDescriptorSetLayoutBinding, 2> bindings = {uboLayoutBinding, samplerLayoutBinding};
+        std::array<VkDescriptorSetLayoutBinding, 1> bindings = {samplerLayoutBinding};
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -1055,23 +1033,10 @@ private:
         vkFreeMemory(device, stagingBufferMemory, nullptr);
     }
 
-    void createUniformBuffers() {
-        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
-        std::vector<VkBuffer> buffers = createBuffers(perImage.size(), bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBufferMemory, &uniformBufferStride);
-
-        size_t i = 0;
-        for (PerImage& pi : perImage) {
-            pi.uniformBuffer = buffers.at(i);
-            ++i;
-        }
-    }
-
     void createDescriptorPool() {
-        std::array<VkDescriptorPoolSize, 2> poolSizes{};
-        poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        std::array<VkDescriptorPoolSize, 1> poolSizes{};
+        poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         poolSizes[0].descriptorCount = static_cast<uint32_t>(perImage.size());
-        poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[1].descriptorCount = static_cast<uint32_t>(perImage.size());
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1096,33 +1061,20 @@ private:
             if (vkAllocateDescriptorSets(device, &allocInfo, &pi.descriptorSet) != VK_SUCCESS) {
                 throw std::runtime_error("failed to allocate descriptor sets!");
             }
-            VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = pi.uniformBuffer;
-            bufferInfo.offset = 0;
-            bufferInfo.range = sizeof(UniformBufferObject);
-
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfo.imageView = textureImageView;
             imageInfo.sampler = textureSampler;
 
-            std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+            std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
 
             descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             descriptorWrites[0].dstSet = pi.descriptorSet;
-            descriptorWrites[0].dstBinding = 0;
+            descriptorWrites[0].dstBinding = 1;
             descriptorWrites[0].dstArrayElement = 0;
-            descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             descriptorWrites[0].descriptorCount = 1;
-            descriptorWrites[0].pBufferInfo = &bufferInfo;
-
-            descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrites[1].dstSet = pi.descriptorSet;
-            descriptorWrites[1].dstBinding = 1;
-            descriptorWrites[1].dstArrayElement = 0;
-            descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptorWrites[1].descriptorCount = 1;
-            descriptorWrites[1].pImageInfo = &imageInfo;
+            descriptorWrites[0].pImageInfo = &imageInfo;
 
             vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
         }
@@ -1263,7 +1215,21 @@ private:
         }
     }
 
-    void recordOneTimeCommandBuffer(PerImage& pi) {
+    glm::mat4 getMVP() {
+        static auto startTime = std::chrono::high_resolution_clock::now();
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        auto model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+        proj[1][1] *= -1;
+
+        return proj * view * model;
+    }
+
+    void recordOneTimeFrameCommandBuffer(PerImage& pi) {
         static auto startTime = std::chrono::high_resolution_clock::now();
 
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -1309,7 +1275,7 @@ private:
 
             vkCmdBindDescriptorSets(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &pi.descriptorSet, 0, nullptr);
 
-            PushConstant pushConstant { color };
+            PushConstant pushConstant { getMVP(), color };
             vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
 
             vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
@@ -1340,25 +1306,6 @@ private:
         }
     }
 
-    void updateUniformBuffer(uint32_t currentImage) {
-        static auto startTime = std::chrono::high_resolution_clock::now();
-
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-        UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-        ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-        ubo.proj[1][1] *= -1;
-
-        void* data;
-        auto& mem = uniformBufferMemory;
-        vkMapMemory(device, mem, currentImage * uniformBufferStride, sizeof(ubo), 0, &data);
-            memcpy(data, &ubo, sizeof(ubo));
-        vkUnmapMemory(device, mem);
-    }
-
     void drawFrame() {
         PerFrame& pf = perFrame.at(currentFrame);
         vkWaitForFences(device, 1, &pf.inFlightFence, VK_TRUE, UINT64_MAX);
@@ -1372,8 +1319,6 @@ private:
         } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             throw std::runtime_error("failed to acquire swap chain image!");
         }
-
-        updateUniformBuffer(imageIndex);
 
         VkFence& imageFenceRef = perImage.at(imageIndex).perFrameImageInFlight;
         if (imageFenceRef != VK_NULL_HANDLE) {
@@ -1390,7 +1335,7 @@ private:
         submitInfo.pWaitSemaphores = waitSemaphores;
         submitInfo.pWaitDstStageMask = waitStages;
 
-        recordOneTimeCommandBuffer(perImage[imageIndex]);
+        recordOneTimeFrameCommandBuffer(perImage[imageIndex]);
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &perImage[imageIndex].commandBuffer;
 
