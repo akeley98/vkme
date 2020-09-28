@@ -170,7 +170,8 @@ class Renderer {
         VkImageView view;
         VkFramebuffer framebuffer;
         VkCommandBuffer commandBuffer;
-        VkDescriptorSet descriptorSet;
+        VkDescriptorSet faceDescriptorSet;
+        VkDescriptorSet endivesDescriptorSet;
 
         // Aliases the fence in PerFrame that protects the current
         // in-flight frame being used to draw this image (Idk what's
@@ -194,10 +195,15 @@ class Renderer {
     VkDeviceMemory depthImageMemory;
     VkImageView depthImageView;
 
-    VkImage textureImage;
-    VkDeviceMemory textureImageMemory;
-    VkImageView textureImageView;
-    VkSampler textureSampler;
+    struct TextureInfo {
+        VkImage image;
+        VkDeviceMemory memory;
+        VkImageView view;
+        VkSampler sampler;
+    };
+
+    TextureInfo faceTexture;
+    TextureInfo endivesTexture;
 
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
@@ -233,12 +239,11 @@ class Renderer {
         createCommandPool();
         createDepthResources();
         createFramebuffers();
-        createTextureImage();
-        createTextureImageView();
-        createTextureSampler();
         createVertexBuffer();
         createIndexBuffer();
         createDescriptorPool();
+        faceTexture = createTexture(expand_filename("texture.jpg"));
+        endivesTexture = createTexture(expand_filename("endives.jpg"));
         createDescriptorSets();
         createCommandBuffers();
         createSyncObjects();
@@ -270,11 +275,8 @@ class Renderer {
     void cleanup() {
         cleanupSwapChain();
 
-        vkDestroySampler(device, textureSampler, nullptr);
-        vkDestroyImageView(device, textureImageView, nullptr);
-
-        vkDestroyImage(device, textureImage, nullptr);
-        vkFreeMemory(device, textureImageMemory, nullptr);
+        cleanupTexture(faceTexture);
+        cleanupTexture(endivesTexture);
 
         vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
@@ -300,6 +302,14 @@ class Renderer {
 
         vkDestroySurfaceKHR(instance, surface, nullptr);
         vkDestroyInstance(instance, nullptr);
+    }
+
+    void cleanupTexture(TextureInfo textureInfo) {
+        vkDestroySampler(device, textureInfo.sampler, nullptr);
+        vkDestroyImageView(device, textureInfo.view, nullptr);
+
+        vkDestroyImage(device, textureInfo.image, nullptr);
+        vkFreeMemory(device, textureInfo.memory, nullptr);
     }
 
     void recreateSwapChain() {
@@ -800,9 +810,11 @@ class Renderer {
         return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
     }
 
-    void createTextureImage() {
+    TextureInfo createTexture(std::string filename) {
+        TextureInfo textureInfo;
+
         int texWidth, texHeight, texChannels;
-        std::string filename = expand_filename("texture.jpg");
+        // std::string filename = expand_filename("texture.jpg");
         stbi_uc* pixels = stbi_load(filename.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
         VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -821,21 +833,17 @@ class Renderer {
 
         stbi_image_free(pixels);
 
-        createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+        createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureInfo.image, textureInfo.memory);
 
-        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-            copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
-        transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        transitionImageLayout(textureInfo.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            copyBufferToImage(stagingBuffer, textureInfo.image, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+        transitionImageLayout(textureInfo.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
         vkDestroyBuffer(device, stagingBuffer, nullptr);
         vkFreeMemory(device, stagingBufferMemory, nullptr);
-    }
 
-    void createTextureImageView() {
-        textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-    }
+        textureInfo.view = createImageView(textureInfo.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
-    void createTextureSampler() {
         VkSamplerCreateInfo samplerInfo{};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerInfo.magFilter = VK_FILTER_LINEAR;
@@ -851,9 +859,11 @@ class Renderer {
         samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
         samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
-        if (vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
+        if (vkCreateSampler(device, &samplerInfo, nullptr, &textureInfo.sampler) != VK_SUCCESS) {
             throw std::runtime_error("failed to create texture sampler!");
         }
+
+        return textureInfo;
     }
 
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
@@ -1024,13 +1034,13 @@ class Renderer {
     void createDescriptorPool() {
         std::array<VkDescriptorPoolSize, 1> poolSizes{};
         poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        poolSizes[0].descriptorCount = static_cast<uint32_t>(perImage.size());
+        poolSizes[0].descriptorCount = static_cast<uint32_t>(perImage.size() * 2);
 
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
         poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = static_cast<uint32_t>(perImage.size());
+        poolInfo.maxSets = static_cast<uint32_t>(perImage.size() * 2);
 
         if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
             throw std::runtime_error("failed to create descriptor pool!");
@@ -1045,25 +1055,30 @@ class Renderer {
         allocInfo.pSetLayouts = &descriptorSetLayout;
 
         for (PerImage& pi : perImage) {
-            if (vkAllocateDescriptorSets(device, &allocInfo, &pi.descriptorSet) != VK_SUCCESS) {
-                throw std::runtime_error("failed to allocate descriptor sets!");
-            }
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.imageView = textureImageView;
-            imageInfo.sampler = textureSampler;
+            auto initDescriptorSet = [&] (TextureInfo& textureInfo, VkDescriptorSet& descriptorSet) {
+                if (vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet) != VK_SUCCESS) {
+                    throw std::runtime_error("failed to allocate descriptor sets!");
+                }
+                VkDescriptorImageInfo imageInfo{};
+                imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                imageInfo.imageView = textureInfo.view;
+                imageInfo.sampler = textureInfo.sampler;
 
-            std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
+                std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
 
-            descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            descriptorWrites[0].dstSet = pi.descriptorSet;
-            descriptorWrites[0].dstBinding = 1;
-            descriptorWrites[0].dstArrayElement = 0;
-            descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            descriptorWrites[0].descriptorCount = 1;
-            descriptorWrites[0].pImageInfo = &imageInfo;
+                descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                descriptorWrites[0].dstSet = descriptorSet;
+                descriptorWrites[0].dstBinding = 1;
+                descriptorWrites[0].dstArrayElement = 0;
+                descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                descriptorWrites[0].descriptorCount = 1;
+                descriptorWrites[0].pImageInfo = &imageInfo;
 
-            vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+                vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+            };
+
+            initDescriptorSet(faceTexture, pi.faceDescriptorSet);
+            initDescriptorSet(endivesTexture, pi.endivesDescriptorSet);
         }
     }
 
@@ -1261,9 +1276,8 @@ class Renderer {
 
             vkCmdBindIndexBuffer(pi.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-            vkCmdBindDescriptorSets(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &pi.descriptorSet, 0, nullptr);
-
             PushConstant pushConstant { getMVP(), color };
+            vkCmdBindDescriptorSets(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &pi.faceDescriptorSet, 0, nullptr);
             vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
             vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
@@ -1272,6 +1286,7 @@ class Renderer {
             auto proj = camera.get_projection();
             proj[1][1] *= -1;
 
+            vkCmdBindDescriptorSets(pi.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &pi.endivesDescriptorSet, 0, nullptr);
             pushConstant = PushConstant { proj * view * model, glm::vec4(1, 1, 1, 1) };
             vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
             vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
