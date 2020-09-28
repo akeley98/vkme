@@ -1038,12 +1038,11 @@ class Renderer {
     }
 
     void createDescriptorSets() {
-        std::vector<VkDescriptorSetLayout> layouts(perImage.size(), descriptorSetLayout);
         VkDescriptorSetAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         allocInfo.descriptorPool = descriptorPool;
         allocInfo.descriptorSetCount = 1;
-        allocInfo.pSetLayouts = layouts.data();
+        allocInfo.pSetLayouts = &descriptorSetLayout;
 
         for (PerImage& pi : perImage) {
             if (vkAllocateDescriptorSets(device, &allocInfo, &pi.descriptorSet) != VK_SUCCESS) {
@@ -1266,7 +1265,15 @@ class Renderer {
 
             PushConstant pushConstant { getMVP(), color };
             vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
+            vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
+            auto model = glm::translate(glm::mat4(1), glm::vec3(0, 0, 2));
+            auto view = camera.get_view();
+            auto proj = camera.get_projection();
+            proj[1][1] *= -1;
+
+            pushConstant = PushConstant { proj * view * model, glm::vec4(1, 1, 1, 1) };
+            vkCmdPushConstants(pi.commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstant), &pushConstant);
             vkCmdDrawIndexed(pi.commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
         vkCmdEndRenderPass(pi.commandBuffer);
