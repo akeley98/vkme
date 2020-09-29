@@ -82,10 +82,12 @@ void Window::set_title(const char* title)
 
 bool Window::frame_update(float* out_dt)
 {
-
-    // Calculate dt.
-    double now = glfwGetTime();
-    double dt = now - previous_update;
+    double now, dt;
+    // Calculate dt and throttle to 1000 FPS.
+    do {
+        now = glfwGetTime();
+        dt = now - previous_update;
+    } while (dt < 0.001);
     previous_update = now;
     if (out_dt) *out_dt = dt;
 

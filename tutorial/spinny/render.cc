@@ -180,7 +180,8 @@ const std::vector<uint16_t> indices = {
 const std::vector<VoxelVertex> voxels = [] {
     std::vector<VoxelVertex> result;
     result.push_back({ 0xFF000002 & ~POS_X_FACE_BIT, 0x0080FF00 });
-    result.push_back({ 0xFF000003 & ~NEG_X_FACE_BIT, 0xFF800000 });
+    result.push_back({ 0xFF000003 & ~NEG_X_FACE_BIT & ~POS_Y_FACE_BIT, 0xFF800000 });
+    result.push_back({ 0xFF000103 & ~NEG_Y_FACE_BIT, 0x80808000 });
     return result;
 } ();
 
