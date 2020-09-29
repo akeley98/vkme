@@ -35,7 +35,7 @@ bezier: cckiss/bezier.cpp.o glsl-index/vert.spv glsl-index/frag.spv
 depth: cckiss/depth.cpp.o glsl-depth/vert.spv glsl-depth/frag.spv
 	$(CXX) cckiss/depth.cpp.o -o depth $(LIBS)
 
-spinny/spinny-bin: cckiss/spinny/window.cc.o cckiss/spinny/render.cc.o cckiss/spinny/main.cc.o glsl-depth/vert.spv glsl-depth/frag.spv
+spinny/spinny-bin: cckiss/spinny/window.cc.o cckiss/spinny/render.cc.o cckiss/spinny/main.cc.o glsl-depth/vert.spv glsl-depth/frag.spv spinny/spinny-data/voxel.vert.spv spinny/spinny-data/voxel.frag.spv
 	$(CXX) cckiss/spinny/window.cc.o cckiss/spinny/render.cc.o cckiss/spinny/main.cc.o -o spinny/spinny-bin $(LIBS)
 
 glsl-pipeline/vert.spv: pipeline.vert
@@ -55,3 +55,10 @@ glsl-depth/vert.spv: depth.vert
 
 glsl-depth/frag.spv: depth.frag
 	glslangValidator depth.frag -V -o glsl-depth/frag.spv
+
+spinny/spinny-data/voxel.vert.spv: spinny/voxel.vert
+	glslangValidator spinny/voxel.vert -V -o spinny/spinny-data/voxel.vert.spv
+
+spinny/spinny-data/voxel.frag.spv: spinny/voxel.frag
+	glslangValidator spinny/voxel.frag -V -o spinny/spinny-data/voxel.frag.spv
+
